@@ -44,7 +44,12 @@ pip install fastapi gradio pandas sentence-transformers rapidfuzz oracledb uvico
 
 ## 💻 Usage
 
-### Web Interface (Gradio)
+### Streamlit Web App (Recommended for deployment)
+```bash
+streamlit run streamlit_app.py
+```
+
+### Gradio Web Interface (Local development)
 ```bash
 python app.py
 ```
@@ -63,6 +68,14 @@ uvicorn main:app --reload
 ```bash
 python oracle.py
 ```
+
+## 🚀 Streamlit Share Deployment
+
+1. **Push to GitHub**: Ensure all files are committed and pushed
+2. **Visit**: [share.streamlit.io/deploy](https://share.streamlit.io/deploy)
+3. **Connect Repository**: Link your GitHub repository
+4. **Set Main File**: Use `streamlit_app.py` as the main file
+5. **Deploy**: Click deploy and wait for the app to build
 
 ## 🔐 API Authentication
 
