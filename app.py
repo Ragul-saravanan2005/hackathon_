@@ -1,17 +1,23 @@
 import pandas as pd
-from sentence_transformers import SentenceTransformer, util
-from rapidfuzz import fuzz
 import re, os
 import gradio as gr
+
+try:
+    from sentence_transformers import SentenceTransformer, util
+    from rapidfuzz import fuzz
+    ML_AVAILABLE = True
+except ImportError as e:
+    print(f"ML libraries not available: {e}")
+    ML_AVAILABLE = False
 
 # ----------------------------
 # Load datasets
 # ----------------------------
 def load_nco_data():
-    return pd.read_csv(r"C:\Users\ASUS\Downloads\penta\MOCK_DATA_with_NCO.csv")
+    return pd.read_csv(r"data\MOCK_DATA_with_NCO.csv")
 
 def load_survey_data():
-    ctl_file_path = r"C:\Users\ASUS\Downloads\penta\survey_data.ctl"
+    ctl_file_path = r"data\survey_data.ctl"
     with open(ctl_file_path, "r", encoding="utf-8") as f:
         ctl_content = f.read()
 
@@ -41,21 +47,46 @@ def load_survey_data():
 # Load model + embeddings
 # ----------------------------
 nco_df = load_nco_data()
-model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-nco_df['embeddings'] = nco_df['occupation_title'].apply(lambda x: model.encode(str(x), convert_to_tensor=True))
+
+if ML_AVAILABLE:
+    try:
+        print("Loading SentenceTransformer model...")
+        model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+        nco_df['embeddings'] = nco_df['occupation_title'].apply(lambda x: model.encode(str(x), convert_to_tensor=True))
+        print("Model loaded successfully!")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        ML_AVAILABLE = False
+else:
+    model = None
 
 def search_occupation(query, top_k):
-    query_emb = model.encode(query, convert_to_tensor=True)
-    temp_df = nco_df.copy()
-    temp_df['semantic_score'] = temp_df['embeddings'].apply(
-        lambda emb: float(util.cos_sim(query_emb, emb))
-    )
-    temp_df['fuzzy_score'] = temp_df['occupation_title'].apply(
-        lambda title: fuzz.token_sort_ratio(query.lower(), title.lower()) / 100
-    )
-    temp_df['final_score'] = 0.7 * temp_df['semantic_score'] + 0.3 * temp_df['fuzzy_score']
-    results = temp_df.sort_values(by='final_score', ascending=False).head(top_k)
-    return results[['occupation_title', 'nco_code', 'final_score']]
+    if not ML_AVAILABLE or model is None:
+        # Fallback to simple text matching
+        temp_df = nco_df.copy()
+        temp_df['simple_score'] = temp_df['occupation_title'].apply(
+            lambda title: 1.0 if query.lower() in title.lower() else 0.0
+        )
+        results = temp_df[temp_df['simple_score'] > 0].sort_values(by='simple_score', ascending=False).head(top_k)
+        if results.empty:
+            return pd.DataFrame({'occupation_title': ['No matches found'], 'nco_code': ['N/A'], 'final_score': [0.0]})
+        return results[['occupation_title', 'nco_code', 'simple_score']].rename(columns={'simple_score': 'final_score'})
+    
+    try:
+        query_emb = model.encode(query, convert_to_tensor=True)
+        temp_df = nco_df.copy()
+        temp_df['semantic_score'] = temp_df['embeddings'].apply(
+            lambda emb: float(util.cos_sim(query_emb, emb))
+        )
+        temp_df['fuzzy_score'] = temp_df['occupation_title'].apply(
+            lambda title: fuzz.token_sort_ratio(query.lower(), title.lower()) / 100
+        )
+        temp_df['final_score'] = 0.7 * temp_df['semantic_score'] + 0.3 * temp_df['fuzzy_score']
+        results = temp_df.sort_values(by='final_score', ascending=False).head(top_k)
+        return results[['occupation_title', 'nco_code', 'final_score']]
+    except Exception as e:
+        print(f"Error in search_occupation: {e}")
+        return pd.DataFrame({'occupation_title': ['Search error'], 'nco_code': ['N/A'], 'final_score': [0.0]})
 
 # ----------------------------
 # Gradio Tab 1 - Survey Data
